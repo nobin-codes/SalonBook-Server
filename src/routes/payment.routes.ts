@@ -4,12 +4,21 @@ import Stripe from "stripe";
 import { ObjectId } from "mongodb";
 import { env } from "../config/env.js";
 import { getDatabase } from "../config/database.js";
-import { authenticateUser } from "../middleware/auth.middleware.js";
-import type { Appointment, Service } from "../types/database.js";
+import {
+  authenticateUser,
+  authorizeAdmin,
+} from "../middleware/auth.middleware.js";
+import type {
+  Appointment,
+  Service,
+  Transaction,
+  User,
+} from "../types/database.js";
 import { DEFAULT_CURRENCY } from "../utils/constants.js";
 
 const router = Router();
 
+// Create a Stripe Checkout session for a confirmed appointment.
 router.post(
   "/create-checkout-session",
   authenticateUser,
@@ -148,6 +157,92 @@ router.post(
       res.status(500).json({
         success: false,
         message: "Failed to create payment session.",
+      });
+    }
+  },
+);
+
+// Retrieve all transactions. Admin access only.
+router.get(
+  "/transactions",
+  authenticateUser,
+  authorizeAdmin,
+  async (_req, res): Promise<void> => {
+    try {
+      const db = getDatabase();
+
+      const transactions = await db
+        .collection<Transaction>("transactions")
+        .find({})
+        .sort({ createdAt: -1 })
+        .toArray();
+
+      const transactionDetails = await Promise.all(
+        transactions.map(async (transaction) => {
+          const [appointment, customer] = await Promise.all([
+            db.collection<Appointment>("appointments").findOne({
+              _id: transaction.appointmentId,
+            }),
+            db.collection<User>("users").findOne({
+              $or: [
+                { id: transaction.customerId },
+                ...(ObjectId.isValid(transaction.customerId)
+                  ? [{ _id: new ObjectId(transaction.customerId) }]
+                  : []),
+              ],
+            }),
+          ]);
+
+          let service: Service | null = null;
+
+          if (appointment) {
+            service = await db
+              .collection<Service>("services")
+              .findOne({
+                _id: appointment.serviceId,
+              });
+          }
+
+          return {
+            ...transaction,
+            customer: customer
+              ? {
+                  id: customer.id ?? customer._id?.toString() ?? "",
+                  name: customer.name,
+                  email: customer.email,
+                }
+              : null,
+            appointment: appointment
+              ? {
+                  _id: appointment._id,
+                  appointmentDate: appointment.appointmentDate,
+                  timeSlot: appointment.timeSlot,
+                  status: appointment.status,
+                  paymentStatus: appointment.paymentStatus,
+                }
+              : null,
+            service: service
+              ? {
+                  _id: service._id,
+                  serviceName: service.serviceName,
+                  category: service.category,
+                }
+              : null,
+          };
+        }),
+      );
+
+      res.status(200).json({
+        success: true,
+        message: "Transactions retrieved successfully.",
+        data: transactionDetails,
+      });
+    } catch (error) {
+      console.error("Get transactions error:", error);
+
+      res.status(500).json({
+        success: false,
+        message: "Failed to retrieve transactions.",
       });
     }
   },
