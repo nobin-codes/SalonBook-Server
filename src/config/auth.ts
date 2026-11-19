@@ -23,20 +23,16 @@ export const auth = betterAuth({
     maxPasswordLength: 128,
   },
 
-  socialProviders:
-    env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
-      ? {
-          google: {
-            clientId: env.GOOGLE_CLIENT_ID,
-            clientSecret: env.GOOGLE_CLIENT_SECRET,
-          },
-        }
-      : {},
+  socialProviders: {
+    google: {
+      clientId: env.GOOGLE_CLIENT_ID,
+      clientSecret: env.GOOGLE_CLIENT_SECRET,
+    },
+  },
 
   user: {
-  modelName: "users",
-
-  additionalFields: {
+    modelName: "users",
+    additionalFields: {
       role: {
         type: "string",
         required: false,
@@ -63,12 +59,14 @@ export const auth = betterAuth({
       maxAge: 5 * 60,
     },
   },
- advanced: {
-  defaultCookieAttributes: {
-    sameSite: "none",
-    secure: true,
+
+  advanced: {
+    defaultCookieAttributes: {
+      sameSite: "none",
+      secure: true,
+    },
   },
-},
+
   plugins: [jwt()],
 
   hooks: {
