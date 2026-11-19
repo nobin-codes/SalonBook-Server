@@ -63,7 +63,12 @@ export const auth = betterAuth({
       maxAge: 5 * 60,
     },
   },
-
+ advanced: {
+  defaultCookieAttributes: {
+    sameSite: "none",
+    secure: true,
+  },
+},
   plugins: [jwt()],
 
   hooks: {
