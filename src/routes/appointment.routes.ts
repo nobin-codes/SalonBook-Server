@@ -113,7 +113,7 @@ const isPastTimeSlot = (
 };
 
 // GET /api/appointments
-// Customer: Get own appointments.
+// Customer: Get own appointments with service details.
 // Admin: Get all appointments with customer and service details.
 appointmentRouter.get("/", authenticateUser, async (req, res) => {
   try {
@@ -130,16 +130,6 @@ appointmentRouter.get("/", authenticateUser, async (req, res) => {
       .sort({ createdAt: -1 })
       .toArray();
 
-    // Keep the existing customer response unchanged.
-    if (!isAdmin) {
-      res.status(200).json({
-        success: true,
-        message: "Appointments retrieved successfully.",
-        data: appointments,
-      });
-      return;
-    }
-
     if (appointments.length === 0) {
       res.status(200).json({
         success: true,
@@ -149,14 +139,6 @@ appointmentRouter.get("/", authenticateUser, async (req, res) => {
       return;
     }
 
-    const customerIds = [
-      ...new Set(appointments.map((appointment) => appointment.customerId)),
-    ];
-
-    const validCustomerObjectIds = customerIds
-      .filter((id) => ObjectId.isValid(id))
-      .map((id) => new ObjectId(id));
-
     const serviceIds = [
       ...new Set(
         appointments.map((appointment) =>
@@ -165,49 +147,12 @@ appointmentRouter.get("/", authenticateUser, async (req, res) => {
       ),
     ].map((id) => new ObjectId(id));
 
-    const [customers, services] = await Promise.all([
-      db
-        .collection<User & { _id?: ObjectId }>("users")
-        .find(
-          {
-            $or: [
-              { id: { $in: customerIds } },
-              { _id: { $in: validCustomerObjectIds } },
-            ],
-          },
-          {
-            projection: {
-              _id: 1,
-              id: 1,
-              name: 1,
-              email: 1,
-              image: 1,
-              phone: 1,
-            },
-          },
-        )
-        .toArray(),
-
-      db
-        .collection<Service>("services")
-        .find({
-          _id: { $in: serviceIds },
-        })
-        .toArray(),
-    ]);
-
-    const customerMap = new Map(
-      customers.map((customer) => [
-        customer.id ?? customer._id?.toString() ?? "",
-        {
-          id: customer.id ?? customer._id?.toString(),
-          name: customer.name,
-          email: customer.email,
-          image: customer.image,
-          phone: customer.phone,
-        },
-      ]),
-    );
+    const services = await db
+      .collection<Service>("services")
+      .find({
+        _id: { $in: serviceIds },
+      })
+      .toArray();
 
     const serviceMap = new Map(
       services.map((service) => [
@@ -225,12 +170,71 @@ appointmentRouter.get("/", authenticateUser, async (req, res) => {
       ]),
     );
 
-    const enrichedAppointments = appointments.map((appointment) => ({
+    const serviceEnrichedAppointments = appointments.map((appointment) => ({
       ...appointment,
-      customer: customerMap.get(appointment.customerId) ?? null,
       service:
         serviceMap.get(appointment.serviceId.toString()) ?? null,
     }));
+
+    // Customers only receive their own appointments and service details.
+    if (!isAdmin) {
+      res.status(200).json({
+        success: true,
+        message: "Appointments retrieved successfully.",
+        data: serviceEnrichedAppointments,
+      });
+      return;
+    }
+
+    const customerIds = [
+      ...new Set(appointments.map((appointment) => appointment.customerId)),
+    ];
+
+    const validCustomerObjectIds = customerIds
+      .filter((id) => ObjectId.isValid(id))
+      .map((id) => new ObjectId(id));
+
+    const customers = await db
+      .collection<User & { _id?: ObjectId }>("users")
+      .find(
+        {
+          $or: [
+            { id: { $in: customerIds } },
+            { _id: { $in: validCustomerObjectIds } },
+          ],
+        },
+        {
+          projection: {
+            _id: 1,
+            id: 1,
+            name: 1,
+            email: 1,
+            image: 1,
+            phone: 1,
+          },
+        },
+      )
+      .toArray();
+
+    const customerMap = new Map(
+      customers.map((customer) => [
+        customer.id ?? customer._id?.toString() ?? "",
+        {
+          id: customer.id ?? customer._id?.toString(),
+          name: customer.name,
+          email: customer.email,
+          image: customer.image,
+          phone: customer.phone,
+        },
+      ]),
+    );
+
+    const enrichedAppointments = serviceEnrichedAppointments.map(
+      (appointment) => ({
+        ...appointment,
+        customer: customerMap.get(appointment.customerId) ?? null,
+      }),
+    );
 
     res.status(200).json({
       success: true,
