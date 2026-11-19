@@ -21,6 +21,36 @@ app.use(
   }),
 );
 
+// Initialize the database once per running instance.
+let databaseInitialization: Promise<void> | undefined;
+
+const initializeDatabase = (): Promise<void> => {
+  if (!databaseInitialization) {
+    databaseInitialization = connectDatabase().then(async () => {
+      await createDatabaseIndexes();
+    }).catch((error) => {
+      databaseInitialization = undefined;
+      throw error;
+    });
+  }
+
+  return databaseInitialization;
+};
+
+// Ensure the database is ready before handling requests.
+app.use(async (_req, res, next) => {
+  try {
+    await initializeDatabase();
+    next();
+  } catch (error) {
+    console.error("Database initialization failed:", error);
+    res.status(500).json({
+      success: false,
+      message: "Database connection failed.",
+    });
+  }
+});
+
 // Better Auth must be mounted before express.json().
 app.all("/api/auth/*splat", toNodeHandler(auth));
 
@@ -50,33 +80,6 @@ app.get("/", (_req, res) => {
     success: true,
     message: "SalonBook API is running successfully!",
   });
-});
-
-// Initialize the database once per running instance.
-let databaseInitialization: Promise<void> | undefined;
-
-const initializeDatabase = (): Promise<void> => {
-  if (!databaseInitialization) {
-    databaseInitialization = connectDatabase().then(async () => {
-      await createDatabaseIndexes();
-    });
-  }
-
-  return databaseInitialization;
-};
-
-// Ensure the database is ready before handling requests.
-app.use(async (_req, res, next) => {
-  try {
-    await initializeDatabase();
-    next();
-  } catch (error) {
-    console.error("Database initialization failed:", error);
-    res.status(500).json({
-      success: false,
-      message: "Database connection failed.",
-    });
-  }
 });
 
 // Local development server.
