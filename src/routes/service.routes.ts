@@ -495,7 +495,7 @@ serviceRouter.patch(
 );
 
 // DELETE /api/services/:id
-// Admin only: Delete a service.
+// Admin only: Deactivate a service to preserve appointment history.
 serviceRouter.delete(
   "/:id",
   authenticateUser,
@@ -514,11 +514,18 @@ serviceRouter.delete(
 
       const result = await getDatabase()
         .collection<Service>("services")
-        .deleteOne({
-          _id: new ObjectId(id),
-        });
+        .updateOne(
+          {
+            _id: new ObjectId(id),
+          },
+          {
+            $set: {
+              status: "inactive",
+            },
+          },
+        );
 
-      if (result.deletedCount === 0) {
+      if (result.matchedCount === 0) {
         res.status(404).json({
           success: false,
           message: "Service not found.",
@@ -528,14 +535,15 @@ serviceRouter.delete(
 
       res.status(200).json({
         success: true,
-        message: "Service deleted successfully.",
+        message:
+          "Service deactivated successfully. Appointment history has been preserved.",
       });
     } catch (error) {
-      console.error("Delete service error:", error);
+      console.error("Deactivate service error:", error);
 
       res.status(500).json({
         success: false,
-        message: "Failed to delete service.",
+        message: "Failed to deactivate service.",
       });
     }
   },
