@@ -12,7 +12,6 @@ import { authenticateUser } from "./middleware/auth.middleware.js";
 import appointmentRouter from "./routes/appointment.routes.js";
 import usersRouter from "./routes/users.routes.js";
 
-
 const app = express();
 
 app.use(
@@ -29,7 +28,7 @@ app.use(express.json());
 
 app.use("/api/services", serviceRouter);
 app.use("/api/uploads", uploadRouter);
-app.use("/api/appointments", appointmentRouter); 
+app.use("/api/appointments", appointmentRouter);
 app.use("/api/users", usersRouter);
 
 // Temporary JWT authentication test endpoint.
@@ -53,18 +52,50 @@ app.get("/", (_req, res) => {
   });
 });
 
-const startServer = async (): Promise<void> => {
-  try {
-    await connectDatabase();
-    await createDatabaseIndexes();
+// Initialize the database once per running instance.
+let databaseInitialization: Promise<void> | undefined;
 
-    app.listen(env.PORT, () => {
-      console.log(`SalonBook API running on port ${env.PORT}`);
+const initializeDatabase = (): Promise<void> => {
+  if (!databaseInitialization) {
+    databaseInitialization = connectDatabase().then(async () => {
+      await createDatabaseIndexes();
     });
-  } catch (error) {
-    console.error("Failed to start SalonBook API:", error);
-    process.exit(1);
   }
+
+  return databaseInitialization;
 };
 
-void startServer();
+// Ensure the database is ready before handling requests.
+app.use(async (_req, res, next) => {
+  try {
+    await initializeDatabase();
+    next();
+  } catch (error) {
+    console.error("Database initialization failed:", error);
+    res.status(500).json({
+      success: false,
+      message: "Database connection failed.",
+    });
+  }
+});
+
+// Local development server.
+if (process.env.VERCEL !== "1") {
+  const startServer = async (): Promise<void> => {
+    try {
+      await initializeDatabase();
+
+      app.listen(env.PORT, () => {
+        console.log(`SalonBook API running on port ${env.PORT}`);
+      });
+    } catch (error) {
+      console.error("Failed to start SalonBook API:", error);
+      process.exit(1);
+    }
+  };
+
+  void startServer();
+}
+
+// Export the Express app for Vercel.
+export default app;
