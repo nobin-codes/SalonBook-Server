@@ -495,7 +495,7 @@ serviceRouter.patch(
 );
 
 // DELETE /api/services/:id
-// Admin only: Deactivate a service to preserve appointment history.
+// Admin only: Permanently delete only if no appointment references exist.
 serviceRouter.delete(
   "/:id",
   authenticateUser,
@@ -512,20 +512,34 @@ serviceRouter.delete(
         return;
       }
 
-      const result = await getDatabase()
-        .collection<Service>("services")
-        .updateOne(
-          {
-            _id: new ObjectId(id),
-          },
-          {
-            $set: {
-              status: "inactive",
-            },
-          },
-        );
+      const db = getDatabase();
+      const serviceId = new ObjectId(id);
 
-      if (result.matchedCount === 0) {
+      const existingAppointment = await db
+        .collection("appointments")
+        .findOne({
+          $or: [
+            { serviceId },
+            { serviceId: id },
+          ],
+        });
+
+      if (existingAppointment) {
+        res.status(409).json({
+          success: false,
+          message:
+            "This service cannot be deleted because it has appointment history. Deactivate it instead.",
+        });
+        return;
+      }
+
+      const result = await db
+        .collection<Service>("services")
+        .deleteOne({
+          _id: serviceId,
+        });
+
+      if (result.deletedCount === 0) {
         res.status(404).json({
           success: false,
           message: "Service not found.",
@@ -535,15 +549,14 @@ serviceRouter.delete(
 
       res.status(200).json({
         success: true,
-        message:
-          "Service deactivated successfully. Appointment history has been preserved.",
+        message: "Service deleted successfully.",
       });
     } catch (error) {
-      console.error("Deactivate service error:", error);
+      console.error("Delete service error:", error);
 
       res.status(500).json({
         success: false,
-        message: "Failed to deactivate service.",
+        message: "Failed to delete service.",
       });
     }
   },
