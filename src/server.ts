@@ -11,6 +11,8 @@ import uploadRouter from "./routes/upload.routes.js";
 import { authenticateUser } from "./middleware/auth.middleware.js";
 import appointmentRouter from "./routes/appointment.routes.js";
 import usersRouter from "./routes/users.routes.js";
+import paymentRouter from "./routes/payment.routes.js";
+import { handleStripeWebhook } from "./routes/payment-webhook.routes.js";
 
 const app = express();
 
@@ -26,12 +28,14 @@ let databaseInitialization: Promise<void> | undefined;
 
 const initializeDatabase = (): Promise<void> => {
   if (!databaseInitialization) {
-    databaseInitialization = connectDatabase().then(async () => {
-      await createDatabaseIndexes();
-    }).catch((error) => {
-      databaseInitialization = undefined;
-      throw error;
-    });
+    databaseInitialization = connectDatabase()
+      .then(async () => {
+        await createDatabaseIndexes();
+      })
+      .catch((error) => {
+        databaseInitialization = undefined;
+        throw error;
+      });
   }
 
   return databaseInitialization;
@@ -44,6 +48,7 @@ app.use(async (_req, res, next) => {
     next();
   } catch (error) {
     console.error("Database initialization failed:", error);
+
     res.status(500).json({
       success: false,
       message: "Database connection failed.",
@@ -54,12 +59,20 @@ app.use(async (_req, res, next) => {
 // Better Auth must be mounted before express.json().
 app.all("/api/auth/*splat", toNodeHandler(auth));
 
+// Stripe webhook must receive the original raw request body.
+app.post(
+  "/api/payments/webhook",
+  express.raw({ type: "application/json" }),
+  handleStripeWebhook,
+);
+
 app.use(express.json());
 
 app.use("/api/services", serviceRouter);
 app.use("/api/uploads", uploadRouter);
 app.use("/api/appointments", appointmentRouter);
 app.use("/api/users", usersRouter);
+app.use("/api/payments", paymentRouter);
 
 // Temporary JWT authentication test endpoint.
 app.get("/api/test-auth", authenticateUser, (req, res) => {
