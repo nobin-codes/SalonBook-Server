@@ -16,9 +16,19 @@ import { handleStripeWebhook } from "./routes/payment-webhook.routes.js";
 
 const app = express();
 
+const allowedOrigins = Array.from(
+  new Set(
+    [
+      env.CLIENT_URL,
+      "http://localhost:3000",
+      "https://salonbook-mu.vercel.app",
+    ].filter(Boolean),
+  ),
+);
+
 app.use(
   cors({
-    origin: env.CLIENT_URL,
+    origin: allowedOrigins,
     credentials: true,
   }),
 );

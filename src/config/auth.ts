@@ -6,6 +6,18 @@ import { jwt } from "better-auth/plugins";
 import { env } from "./env.js";
 import { mongoClient } from "./database.js";
 
+const isProduction = env.BETTER_AUTH_URL.startsWith("https://");
+
+const trustedOrigins = Array.from(
+  new Set(
+    [
+      env.CLIENT_URL,
+      "http://localhost:3000",
+      "https://salonbook-mu.vercel.app",
+    ].filter(Boolean),
+  ),
+);
+
 export const auth = betterAuth({
   database: mongodbAdapter(mongoClient.db(env.DB_NAME), {
     client: mongoClient,
@@ -15,7 +27,7 @@ export const auth = betterAuth({
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
 
-  trustedOrigins: [env.CLIENT_URL],
+  trustedOrigins,
 
   emailAndPassword: {
     enabled: true,
@@ -62,12 +74,19 @@ export const auth = betterAuth({
 
   advanced: {
     defaultCookieAttributes: {
-      sameSite: "none",
-      secure: true,
+      sameSite: isProduction ? "none" : "lax",
+      secure: isProduction,
     },
   },
 
-  plugins: [jwt()],
+  plugins: [
+    jwt({
+      jwt: {
+        issuer: env.BETTER_AUTH_URL,
+        audience: env.BETTER_AUTH_URL,
+      },
+    }),
+  ],
 
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
