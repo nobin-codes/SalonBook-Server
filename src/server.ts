@@ -8,7 +8,6 @@ import { auth } from "./config/auth.js";
 import { toNodeHandler } from "better-auth/node";
 import serviceRouter from "./routes/service.routes.js";
 import uploadRouter from "./routes/upload.routes.js";
-import { authenticateUser } from "./middleware/auth.middleware.js";
 import appointmentRouter from "./routes/appointment.routes.js";
 import usersRouter from "./routes/users.routes.js";
 import paymentRouter from "./routes/payment.routes.js";
@@ -83,20 +82,6 @@ app.use("/api/uploads", uploadRouter);
 app.use("/api/appointments", appointmentRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/payments", paymentRouter);
-
-// Temporary JWT authentication test endpoint.
-app.get("/api/test-auth", authenticateUser, (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: "JWT authentication successful!",
-    user: {
-      id: req.user?.id,
-      name: req.user?.name,
-      email: req.user?.email,
-      role: req.user?.role,
-    },
-  });
-});
 
 app.get("/", (_req, res) => {
   res.status(200).json({

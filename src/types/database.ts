@@ -48,7 +48,7 @@ export interface Appointment {
 
 export interface Transaction {
   _id: ObjectId;
-  appointmentId: ObjectId;
+  appointmentId?: ObjectId;
   customerId: string;
   amount: number;
   currency: string;

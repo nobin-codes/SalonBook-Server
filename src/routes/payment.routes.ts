@@ -180,9 +180,11 @@ router.get(
       const transactionDetails = await Promise.all(
         transactions.map(async (transaction) => {
           const [appointment, customer] = await Promise.all([
-            db.collection<Appointment>("appointments").findOne({
-              _id: transaction.appointmentId,
-            }),
+            transaction.appointmentId
+  ? db.collection<Appointment>("appointments").findOne({
+      _id: transaction.appointmentId,
+    })
+  : Promise.resolve(null),
             db.collection<User>("users").findOne({
               $or: [
                 { id: transaction.customerId },

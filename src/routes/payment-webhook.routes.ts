@@ -93,12 +93,55 @@ export const handleStripeWebhook = async (
       });
 
     if (!appointment) {
-      res.status(404).json({
+  if (isPaidEvent) {
+    const amountInCents = session.amount_total;
+    const currency = session.currency?.toLowerCase();
+
+    if (
+      session.payment_status !== "paid" ||
+      !Number.isSafeInteger(amountInCents) ||
+      amountInCents === null ||
+      amountInCents <= 0 ||
+      currency !== DEFAULT_CURRENCY.toLowerCase() ||
+      !session.id
+    ) {
+      res.status(400).json({
         success: false,
-        message: "Appointment not found.",
+        message: "Payment verification failed.",
       });
       return;
     }
+
+    await db.collection<Transaction>("transactions").updateOne(
+      { stripeSessionId: session.id },
+      {
+        $set: {
+          customerId,
+          amount: amountInCents / 100,
+          currency,
+          status: "paid",
+        },
+        $unset: {
+          appointmentId: "",
+        },
+        $setOnInsert: {
+          createdAt: new Date(),
+        },
+      },
+      { upsert: true },
+    );
+
+    console.warn(
+      `Verified payment ${session.id} recorded without a matching appointment. Manual review required.`,
+    );
+  }
+
+  res.status(200).json({
+    received: true,
+    message: "Appointment not found. Payment requires review.",
+  });
+  return;
+}
 
     const amountInCents = Math.round(appointment.servicePrice * 100);
     const currency = DEFAULT_CURRENCY.toLowerCase();
@@ -116,18 +159,26 @@ export const handleStripeWebhook = async (
         return;
       }
 
-      await db.collection<Appointment>("appointments").updateOne(
-        {
-          _id: appointment._id,
-          customerId,
-        },
-        {
-          $set: {
-            paymentStatus: "paid",
+      // Only confirmed, unpaid appointments can transition to paid.
+      const appointmentUpdate = await db
+        .collection<Appointment>("appointments")
+        .updateOne(
+          {
+            _id: appointment._id,
+            customerId,
+            status: "confirmed",
+            paymentStatus: "unpaid",
           },
-        },
-      );
+          {
+            $set: {
+              paymentStatus: "paid",
+            },
+          },
+        );
 
+      // Record the verified Stripe payment even if the appointment
+      // was cancelled or already paid. This prevents losing a real
+      // payment record and keeps webhook retries idempotent.
       await db.collection<Transaction>("transactions").updateOne(
         {
           stripeSessionId: session.id,
@@ -148,6 +199,12 @@ export const handleStripeWebhook = async (
           upsert: true,
         },
       );
+
+      if (appointmentUpdate.matchedCount === 0) {
+        console.warn(
+          `Payment ${session.id} received, but appointment ${appointmentId} was not eligible for payment confirmation. Manual review may be required.`,
+        );
+      }
     }
 
     if (isFailedEvent) {
